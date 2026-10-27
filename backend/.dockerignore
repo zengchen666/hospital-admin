@@ -1,0 +1,18 @@
+# 构建上下文瘦身：这些目录/文件不要送给 Docker daemon
+target/
+logs/
+backup/
+*.jar
+*.log
+
+# 校验脚本与调试产物不进镜像
+check_*.py
+_probe.py
+probe.txt
+
+# IDE / VCS
+.idea/
+.vscode/
+.git/
+*.iml
+.DS_Store

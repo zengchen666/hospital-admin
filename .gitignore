@@ -1,0 +1,36 @@
+# ---------------- 构建产物 ----------------
+backend/target/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# ---------------- 运行期产物 ----------------
+**/*.log
+backend/logs/
+backend/backup/
+**/logs/
+**/backup/
+
+# ---------------- 本地环境 ----------------
+.env
+probe.txt
+_probe.py
+_probe.txt
+_mem.txt
+_gitlog.txt
+_commitmsg.txt
+_chk.py
+_t*.txt
+*.log
+**/.DS_Store
+
+# WorkBuddy 会话数据与本地备份，不进仓库
+.workbuddy/
+_backup/
+
+# ---------------- IDE ----------------
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws

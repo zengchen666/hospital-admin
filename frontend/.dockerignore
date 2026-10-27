@@ -1,0 +1,12 @@
+# 构建上下文瘦身
+node_modules/
+dist/
+dist-ssr/
+
+# IDE / VCS
+.idea/
+.vscode/
+.git/
+*.local
+*.log
+.DS_Store

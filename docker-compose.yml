@@ -1,0 +1,149 @@
+# ============================================================================
+# 医疗后台管理系统 —— 一键编排
+#
+#   页面入口   http://localhost          （Nginx + 前端静态资源）
+#   后端直连   http://localhost:8080/api
+#
+# 首次启动：
+#   cp .env.example .env          # 然后按注释改掉占位密钥
+#   docker compose up -d --build
+#   docker compose logs -f app
+#
+# 停止/清理：
+#   docker compose down           # 保留数据卷
+#   docker compose down -v        # 连数据卷一起删（数据库会重新初始化）
+#
+# 设计取舍见根目录《部署说明.md》。
+# ============================================================================
+
+name: hospital-admin
+
+services:
+
+  # ------------------------------------------------------------------ MySQL --
+  mysql:
+    image: mysql:8.0
+    container_name: hospital-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+      - --max_connections=500
+      - --innodb_buffer_pool_size=512M
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请先在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-hospital}
+      MYSQL_USER: ${DB_USERNAME:-hospital}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请先在 .env 中设置 DB_PASSWORD}
+      TZ: Asia/Shanghai
+    ports:
+      # 宿主用 3307：本机已装的 MySQL 占着 3306，避免端口冲突。
+      # 容器内仍然是 3306，app 通过服务名 mysql 走内网。
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 只在数据卷为空（首次初始化）时执行，按文件名顺序跑完 00~25 建表与种子数据。
+      # 已有数据时改动 sql/ 不会自动生效，需要手工导入 —— 见《部署说明.md》。
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # $$ 是转义：让 Compose 不要在这里做变量替换，把 $ 原样交给容器内 shell。
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    networks:
+      - hospital-net
+
+  # ------------------------------------------------------------------ Redis --
+  redis:
+    image: redis:7.4-alpine
+    container_name: hospital-redis
+    restart: unless-stopped
+    # AOF 落盘：登录态与登录失败计数都在 Redis，容器重启就丢会让全员集体掉线。
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      # 宿主用 6381：本机 Redis 占着 6380。
+      - "6381:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - hospital-net
+
+  # ------------------------------------------------------------------ 后端 --
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: hospital-admin:0.1.0
+    container_name: hospital-app
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # 走服务名，不写死 IP：容器重启 IP 会变。
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-hospital}
+      DB_USERNAME: ${DB_USERNAME:-hospital}
+      DB_PASSWORD: ${DB_PASSWORD:?请先在 .env 中设置 DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # 这两个密钥没有默认值：缺失时后端 fail-fast 直接退出，
+      # 而不是拿一个公开默认密钥照常启动（那等于任何人都能签管理员 token）。
+      JWT_SECRET: ${JWT_SECRET:?请先在 .env 中设置 JWT_SECRET}
+      HOSPITAL_AES_KEY: ${HOSPITAL_AES_KEY:?请先在 .env 中设置 HOSPITAL_AES_KEY}
+      LOG_PATH: /app/logs
+      HOSPITAL_BACKUP_DIR: /app/backup
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+    volumes:
+      - app-logs:/app/logs
+      - app-backup:/app/backup
+    depends_on:
+      # service_healthy 而不是默认的 started：
+      # MySQL 进程起来了 ≠ 能连，只按 started 启动会让后端在初始化阶段疯狂重连。
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hospital-net
+    # 健康探针写在镜像里（backend/Dockerfile 的 HEALTHCHECK），这里不重复定义。
+
+  # ------------------------------------------------------------------ 前端 --
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: hospital-web:0.1.0
+    container_name: hospital-web
+    restart: unless-stopped
+    environment:
+      # 渲染进 Nginx 配置的反代目标，默认就是本 compose 的后端服务名
+      BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-app:8080}
+    ports:
+      - "80:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - hospital-net
+
+volumes:
+  mysql-data:
+  redis-data:
+  app-logs:
+  app-backup:
+
+networks:
+  hospital-net:
+    driver: bridge

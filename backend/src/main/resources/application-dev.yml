@@ -1,0 +1,17 @@
+# 开发环境：把 SQL 打到控制台，方便对账与排查
+logging:
+  level:
+    root: info
+    com.hospital: debug
+    org.springframework.security: info
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+hospital:
+  jwt:
+    # 仅本地开发使用的固定密钥；生产由 JWT_SECRET 环境变量注入，不落仓库
+    secret: hospital-dev-only-secret-key-please-change-in-prod-2026

@@ -1,0 +1,67 @@
+# 前端 Deployment + Service（Nginx 托管静态资源 + 反代 /api）
+apiVersion: v1
+kind: Service
+metadata:
+  name: hospital-web
+  namespace: hospital
+  labels:
+    app: hospital-web
+spec:
+  type: ClusterIP
+  selector:
+    app: hospital-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hospital-web
+  namespace: hospital
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hospital-web
+  template:
+    metadata:
+      labels:
+        app: hospital-web
+    spec:
+      containers:
+        - name: web
+          image: hospital-web:0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            # 渲染进 Nginx 配置：值来自 ConfigMap，改后端 Service 名只需改一处
+            - name: BACKEND_UPSTREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: hospital-config
+                  key: BACKEND_UPSTREAM
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false

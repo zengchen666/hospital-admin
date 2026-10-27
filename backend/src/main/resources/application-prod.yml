@@ -1,0 +1,41 @@
+# 生产环境：只输出必要日志、关闭接口文档、收敛免鉴权路径
+# 启动必须显式提供 DB_* 与 JWT_SECRET，否则 fail-fast 直接退出
+logging:
+  level:
+    root: warn
+    com.hospital: info
+    org.springframework.security: warn
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"
+  file:
+    name: ${LOG_PATH:logs}/hospital-admin.log
+    max-size: 100MB
+    max-history: 30
+
+mybatis-plus:
+  configuration:
+    # 生产禁止打印 SQL：审计参数里可能带患者信息
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+spring:
+  datasource:
+    hikari:
+      # 连接泄漏检测：超过 60s 未归还就打 warn，否则池耗尽时无从查起
+      leak-detection-threshold: 60000
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+hospital:
+  security:
+    # 生产只保留认证入口与健康检查；Swagger、/error 不再放行
+    ignore-urls:
+      - /system/auth/login
+      - /system/auth/refresh
+      - /system/health
+  cors:
+    # 生产按实际域名配置，留空即不放行任何跨域源
+    allowed-origins: []

@@ -1,0 +1,114 @@
+server:
+  port: 8080
+  shutdown: graceful
+  servlet:
+    context-path: /api
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: hospital-admin
+  profiles:
+    active: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 密码不硬编码进仓库：本地用下面默认值，生产通过环境变量覆盖
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:hospital}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    hikari:
+      pool-name: hospital-hikari
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      # ⚠️ 超时必须显式收紧：Lettuce 默认命令超时 60s，
+      # Redis 一旦故障，所有请求会一起卡住一分钟，等于把缓存故障放大成全站雪崩。
+      # 1s 足够本机/内网往返，超时后代码里 fail-open 回源数据库。
+      timeout: 1s
+      connect-timeout: 1s
+  jackson:
+    time-zone: Asia/Shanghai
+    # 保留 null 字段：前端表单回显需要 key 存在，缺 key 会让 v-model 绑定变成 undefined
+    default-property-inclusion: always
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 50MB
+  threads:
+    virtual:
+      # JDK 25 + Boot 4：开启虚拟线程，IO 密集型后台管理收益明显
+      enabled: true
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.hospital.**.entity
+  # 敏感字段加解密 TypeHandler（AES-256-GCM）
+  type-handlers-package: com.hospital.common.crypto
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    # 生产环境不要开 StdOutImpl，dev 在 application-dev.yml 里单独打开
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      table-underline: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+hospital:
+  jwt:
+    # 刻意不给默认值：未配置时 JwtTokenProvider 会直接启动失败（fail-fast）。
+    # 开发环境的值写在 application-dev.yml，生产必须用 JWT_SECRET 环境变量注入。
+    # 为什么不能用默认值兜底：密钥一旦跟着代码走，任何人都能签出管理员 token，且服务照常启动毫无征兆。
+    secret: ${JWT_SECRET:}
+    issuer: hospital-admin
+    access-token-expire-seconds: 7200
+    refresh-token-expire-seconds: 604800
+    # 登录失败锁定
+    login-fail-limit: 5
+    login-lock-minutes: 30
+  crypto:
+    # 患者敏感字段（身份证、手机号）加密密钥，Base64 编码的 32 字节。
+    # 生产必须用 HOSPITAL_AES_KEY 环境变量注入，不落仓库。
+    # 这里的开发默认值是"能跑起来"用的，换了环境请务必重新生成：
+    #   openssl rand -base64 32
+    aes-key: ${HOSPITAL_AES_KEY:m7qzi95GV6awTXVIdpodt1WMQnwtRcKfgeFRtw8VRps=}
+  security:
+    # 免鉴权路径（相对 context-path=/api）
+    ignore-urls:
+      - /system/auth/login
+      - /system/auth/refresh
+      - /system/health
+      - /v3/api-docs/**
+      - /swagger-ui/**
+      - /swagger-ui.html
+      - /error
+  cors:
+    # 前端 Vite 默认端口；生产改域名，禁止用 "*" 搭配 allowCredentials
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+    allow-credentials: true

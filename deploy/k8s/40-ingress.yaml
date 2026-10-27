@@ -1,0 +1,39 @@
+# Ingress（ingress-nginx）
+#
+# 前提：集群里已装 ingress-nginx controller。
+#   没有 Ingress 控制器时，可以用 kubectl -n hospital port-forward svc/hospital-web 8081:80 临时访问。
+#
+# 把 hospital.local 换成本机/内网域名：
+#   Windows: C:\Windows\System32\drivers\etc\hosts 加一行  <节点IP> hospital.local
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hospital-ingress
+  namespace: hospital
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # 报表导出要现算 Excel/PDF，超时给足，否则点导出等来一个 504
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: hospital.local
+      http:
+        paths:
+          # /api 优先匹配（Prefix 下更长的前缀优先），不要 rewrite：
+          # 后端 context-path 就是 /api，转发时保留原路径。
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: hospital-backend
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hospital-web
+                port:
+                  number: 80

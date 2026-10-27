@@ -1,0 +1,51 @@
+:root {
+  --hp-sidebar-bg: #1f2937;
+  --hp-sidebar-text: #cbd5e1;
+  --hp-sidebar-active: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', Arial, sans-serif;
+  background: #f5f7fa;
+  color: #1f2937;
+}
+
+.hp-page {
+  padding: 16px;
+}
+
+.hp-page-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* 列表页通用的「筛选区 + 工具条 + 表格」骨架 */
+.hp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.hp-toolbar .spacer {
+  flex: 1;
+}
+
+.hp-muted {
+  color: #94a3b8;
+}

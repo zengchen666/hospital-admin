@@ -1,0 +1,23 @@
+# 一键应用（Secret 请先用 kubectl create secret 建好，见 02-secret.example.yaml）：
+#   kubectl apply -k deploy/k8s/
+#
+# Secret 刻意不在 resources 里：占位密钥一旦被 apply 上去，
+# 集群里跑的就是一个"看起来正常"的弱密钥服务，比直接启动失败更危险。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hospital
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 10-mysql.yaml
+  - 11-redis.yaml
+  - 20-backend.yaml
+  - 30-frontend.yaml
+  - 40-ingress.yaml
+
+images:
+  - name: hospital-admin
+    newTag: "0.1.0"
+  - name: hospital-web
+    newTag: "0.1.0"

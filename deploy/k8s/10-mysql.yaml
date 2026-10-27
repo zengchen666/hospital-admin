@@ -1,0 +1,107 @@
+# MySQL 8.0 —— 单副本 StatefulSet
+#
+# ⚠️ 这是「能跑起来」的最小可用形态，不是生产高可用方案：
+#    生产环境请用云 RDS 或 MySQL Operator（主从、自动备份、故障切换都不是
+#    一个裸 StatefulSet 能解决的）。
+#
+# ⚠️ Kubernetes 没有 docker-entrypoint-initdb.d 这种机制，建表 SQL 需要手工导入：
+#    kubectl -n hospital port-forward svc/hospital-mysql 3306:3306 &
+#    for f in sql/*.sql; do mysql -h127.0.0.1 -P3306 -uroot -p hospital < "$f"; done
+#    长期看应该换成 Flyway / Liquibase 做版本化迁移。
+apiVersion: v1
+kind: Service
+metadata:
+  name: hospital-mysql
+  namespace: hospital
+  labels:
+    app: hospital-mysql
+spec:
+  # Headless：StatefulSet 的稳定网络标识需要它
+  clusterIP: None
+  selector:
+    app: hospital-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hospital-mysql
+  namespace: hospital
+spec:
+  serviceName: hospital-mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hospital-mysql
+  template:
+    metadata:
+      labels:
+        app: hospital-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_0900_ai_ci
+            - --default-time-zone=+08:00
+            - --max_connections=500
+          env:
+            - name: MYSQL_DATABASE
+              value: hospital
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hospital-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: hospital-secret
+                  key: DB_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hospital-secret
+                  key: DB_PASSWORD
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - name: mysql
+              containerPort: 3306
+          # $(VAR) 在 probe 的 command 里会被 kubelet 展开
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$(MYSQL_ROOT_PASSWORD)"]
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$(MYSQL_ROOT_PASSWORD)"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

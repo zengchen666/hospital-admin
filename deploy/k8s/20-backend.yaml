@@ -1,0 +1,101 @@
+# 后端 Deployment + Service
+#
+# 镜像来源：先用根目录的 docker-compose.yml 或 docker build 打出
+#   hospital-admin:0.1.0
+# 推到镜像仓库后把下面的 image 改成 <registry>/hospital-admin:0.1.0，
+# 并把 imagePullPolicy 改成 Always。
+apiVersion: v1
+kind: Service
+metadata:
+  name: hospital-backend
+  namespace: hospital
+  labels:
+    app: hospital-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: hospital-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hospital-backend
+  namespace: hospital
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: hospital-backend
+  template:
+    metadata:
+      labels:
+        app: hospital-backend
+    spec:
+      # 优雅停机：后端开了 server.shutdown=graceful + 20s 阶段超时，
+      # 这里留 40s 兜底，preStop 先睡 5s 等 Endpoint 摘除再收 SIGTERM。
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: app
+          image: hospital-admin:0.1.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: hospital-config
+            - secretRef:
+                name: hospital-secret
+          ports:
+            - name: http
+              containerPort: 8080
+          # 健康检查端点免鉴权，DB 不可用时返回 503
+          startupProbe:
+            httpGet:
+              path: /api/system/health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 60     # 最多等 5 分钟，覆盖首次建连与慢盘
+          readinessProbe:
+            httpGet:
+              path: /api/system/health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/system/health
+              port: 8080
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001          # 与镜像里 useradd -u 10001 对齐
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: backup
+              mountPath: /app/backup
+      volumes:
+        # 多副本各写各的 emptyDir：日志与备份要集中留存的话，
+        # 这里应该换成 PVC + 共享存储，或接 sidecar 采集。
+        - name: logs
+          emptyDir: {}
+        - name: backup
+          emptyDir: {}

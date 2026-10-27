@@ -1,0 +1,27 @@
+# 非敏感配置。改完执行：
+#   kubectl apply -f deploy/k8s/01-configmap.yaml
+#   kubectl -n hospital rollout restart deploy/hospital-backend deploy/hospital-web
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hospital-config
+  namespace: hospital
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+
+  # 数据库：填 Service 名，Kubernetes DNS 会解析到 ClusterIP
+  DB_HOST: "hospital-mysql"
+  DB_PORT: "3306"
+  DB_NAME: "hospital"
+
+  REDIS_HOST: "hospital-redis"
+  REDIS_PORT: "6379"
+
+  # 容器内路径：与镜像里 chown 过的目录一致
+  LOG_PATH: "/app/logs"
+  HOSPITAL_BACKUP_DIR: "/app/backup"
+
+  TZ: "Asia/Shanghai"
+
+  # 前端 Nginx 反代后端的目标，必须与 20-backend.yaml 的 Service 名对得上
+  BACKEND_UPSTREAM: "hospital-backend:8080"
